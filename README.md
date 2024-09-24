@@ -53,7 +53,7 @@
 
 ## Step-by-Step Plan
 
-Highlighted in [Plan.md](https://www.github.com/dharvpat/GPT-2-Reproduction/blob/main/docs/plan.md)
+Highlighted in [Plan.md](https://www.github.com/dharvpat/GPT-3-Reproduction/blob/main/docs/plan.md)
 
 ## Considerations and Challenges
 - **Computational Resources:** Ensure scalability and plan resource allocation.
