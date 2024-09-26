@@ -1,0 +1,12 @@
+model_size: "2.7B"
+hidden_size: 2560
+num_attention_heads: 32
+num_layers: 32
+ffn_hidden_size: 10240
+dropout: 0.1
+vocab_size: 50257
+max_position_embeddings: 1024
+learning_rate: 1e-4
+weight_decay: 0.1
+warmup_steps: 1000
+scheduler: "linear"
