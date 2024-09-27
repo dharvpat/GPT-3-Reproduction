@@ -12,7 +12,7 @@ from src.utils.config import load_config
 # Argument parser for selecting model size at runtime
 def parse_args():
     parser = argparse.ArgumentParser(description="Train GPT-3 Model on WikiText-103")
-    parser.add_argument('--model_size', type=str, choices=['125M', '350M', '760M', '1.3B', '2.7B', '6.7B', '13B', '175B'], required=True, help="Select the model size (e.g., 125M, 350M, 1.3B, etc.)")
+    parser.add_argument('--model_size', type=str, choices=['125M', '350M', '760M', '1.3B', '2.7B', '6.7B', '64M', '13B', '175B', '32M'], required=True, help="Select the model size (e.g., 125M, 350M, 1.3B, etc.)")
     parser.add_argument('--epochs', type=int, default=3, help="Number of training epochs")
     parser.add_argument('--batch_size', type=int, default=8, help="Batch size for training")
     parser.add_argument('--learning_rate', type=float, default=1e-4, help="Learning rate for training")

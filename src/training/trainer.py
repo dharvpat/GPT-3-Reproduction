@@ -3,6 +3,8 @@ from .optimizer import get_optimizer
 from .loss import compute_loss
 from src.data.data_loader import ShardedDataLoader
 import torch.nn.functional as F
+from tqdm import tqdm
+import sys
 
 class Trainer:
     def __init__(self, model, config, data_loader, tokenizer, pad_token_id):
@@ -14,6 +16,7 @@ class Trainer:
         self.optimizer = torch.optim.AdamW(model.parameters(), lr=config['learning_rate'])
         self.criterion = torch.nn.CrossEntropyLoss(ignore_index=int(pad_token_id))
 
+
     def train(self):
         # Set device to 'cuda' if available, otherwise fall back to 'cpu'
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -21,8 +24,14 @@ class Trainer:
         # Set the model to training mode and move it to the appropriate device
         self.model.train()
         self.model.to(device)
-        
-        for batch in self.data_loader:
+
+        # Get the total number of batches for the progress bar
+        total_batches = len(self.data_loader)
+
+        # Initialize the progress bar
+        progress_bar = tqdm(self.data_loader, total=total_batches, desc="Training", unit="batch")
+
+        for batch in progress_bar:
             # Move inputs to the same device as the model
             inputs = batch['input_ids'].to(device)
 
@@ -48,8 +57,12 @@ class Trainer:
             loss.backward()  # Backpropagate the loss
             self.optimizer.step()  # Update the model weights
 
-            # Print loss for debugging
-            print(f"Loss: {loss.item()}")
+            # Update the progress bar with the current loss
+            progress_bar.set_postfix(loss=f"{loss.item():.4f}")
+
+        # Close the progress bar after the epoch is complete
+        progress_bar.close()
+
 
 
 
