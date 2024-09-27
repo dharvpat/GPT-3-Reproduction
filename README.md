@@ -64,7 +64,9 @@ Highlighted in [Plan.md](https://www.github.com/dharvpat/GPT-3-Reproduction/blob
 ## Running Instructions:
 clone into a directory:
 `git clone https://github.com/dharvpat/GPT-3-Reproduction.git`
+
 set it as your working directory in the terminal:
 `cd GPT-3-Reproduction`
+
 run the command:
 `python3 train_on_wikipedia.py --model_size 32M --epochs 5 --batch_size 20 --learning_rate 1e-4 --shard_size 2 --tokenized_dataset_path ./data/processed/tokenized_data_wikitext103` 
