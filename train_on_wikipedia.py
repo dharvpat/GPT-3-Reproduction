@@ -2,9 +2,9 @@ import os
 import argparse
 import torch
 from transformers import GPT2Tokenizer
-from datasets import load_dataset, Dataset, load_from_disk, DatasetDict
+from datasets import load_dataset, Dataset, load_from_disk
 from torch.utils.data import DataLoader
-from src.models import GPT3Model
+from src.models.gpt3_model import GPT3Model  # Assuming GPT3Model is defined in src/models/gpt3_model.py
 from src.training.trainer import Trainer
 from src.utils.checkpointing import save_checkpoint
 from src.utils.config import load_config
@@ -35,43 +35,46 @@ def collate_fn(batch):
 
 # Function to load WikiText-103 dataset with sharding and proper tokenization
 def load_wikitext103_dataset(tokenizer, split="train", shard_size_gb=1.0, tokenized_dataset_path="tokenized_wikitext103"):
-    # Check if the tokenized dataset exists
+    tokenized_dataset_path = tokenized_dataset_path + '_shard_0'
     if os.path.exists(tokenized_dataset_path):
         print(f"Loading tokenized dataset from {tokenized_dataset_path}...")
         return load_from_disk(tokenized_dataset_path)
     
-    # If not found, load the raw dataset and tokenize
-    print("Tokenized dataset not found. Tokenizing the raw dataset...")
-    dataset = load_dataset("wikitext", "wikitext-103-v1", split=split)
+    else:
+        # If the tokenized dataset doesn't exist, load raw dataset and process it
+        print("Tokenized dataset not found. Tokenizing the raw dataset...")
+        dataset = load_dataset("wikitext", "wikitext-103-v1", split=split)
 
-    # Tokenize the text
-    def tokenize_function(examples):
-        return tokenizer(examples["text"], padding="max_length", truncation=True, return_tensors="pt")
+        # Tokenize the text
+        def tokenize_function(examples):
+            return tokenizer(examples["text"], padding="max_length", truncation=True)
 
-    # Create a generator that returns shards of the dataset to avoid loading the whole dataset into memory
-    def shard_dataset(dataset: Dataset):
-        start_idx = 0
-        total_size = len(dataset)
-        while start_idx < total_size:
-            current_shard_chars = 0
-            shard = []
-            while current_shard_chars < shard_size_gb * 1024 * 1024 * 1024 and start_idx < total_size:
-                example = dataset[start_idx]
-                shard.append(example)
-                current_shard_chars += len(example["text"])
-                start_idx += 1
-            
-            # Convert the shard to a Dataset and tokenize
-            shard_dataset = Dataset.from_dict({"text": [example["text"] for example in shard]})
-            tokenized_shard = shard_dataset.map(tokenize_function, batched=True, remove_columns=["text"])
-            yield tokenized_shard
+        # Create a generator that returns shards of the dataset to avoid loading the whole dataset into memory
+        def shard_dataset(dataset: Dataset):
+            start_idx = 0
+            total_size = len(dataset)
+            while start_idx < total_size:
+                current_shard_chars = 0
+                shard = []
+                while current_shard_chars < shard_size_gb * 1024 * 1024 * 1024 and start_idx < total_size:
+                    example = dataset[start_idx]
+                    shard.append(example)
+                    current_shard_chars += len(example["text"])
+                    start_idx += 1
 
-    # Save the tokenized dataset to disk after tokenization
-    tokenized_dataset = DatasetDict({"train": dataset.map(tokenize_function, batched=True, remove_columns=["text"])})
-    print(f"Saving tokenized dataset to {tokenized_dataset_path}...")
-    tokenized_dataset.save_to_disk(tokenized_dataset_path)
-    
-    return tokenized_dataset
+                # Convert the shard to a Dataset and tokenize
+                shard_dataset = Dataset.from_dict({"text": [example["text"] for example in shard]})
+                tokenized_shard = shard_dataset.map(tokenize_function, batched=True, remove_columns=["text"])
+                yield tokenized_shard
+
+        # Tokenize and save the dataset shard-by-shard to reduce memory consumption
+        print(f"Saving tokenized dataset to {tokenized_dataset_path} in shards of {shard_size_gb} GB...")
+        for i, tokenized_shard in enumerate(shard_dataset(dataset)):
+            shard_save_path = f"{tokenized_dataset_path}_shard_{i}"
+            tokenized_shard.save_to_disk(shard_save_path)
+            print(f"Saved shard {i} to {shard_save_path}")
+
+        return None  # Return None because shards are processed and saved individually
 
 # Function to train the GPT-3 model using WikiText-103 with sharded dataset loading
 def train_gpt3_model(model_size, tokenizer, config_path, epochs, batch_size, learning_rate, save_dir, shard_size_gb, tokenized_dataset_path):
@@ -80,22 +83,40 @@ def train_gpt3_model(model_size, tokenizer, config_path, epochs, batch_size, lea
     config['model_size'] = model_size
     config['learning_rate'] = learning_rate
 
-    # Load the dataset with sharding or load the tokenized dataset if it exists
-    dataset = load_wikitext103_dataset(tokenizer, shard_size_gb=shard_size_gb, tokenized_dataset_path=tokenized_dataset_path)
-    
+    # Ensure pad_token_id is set
+    if tokenizer.pad_token is None:
+        tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
+
+    # Make sure the pad_token_id is correctly set
+    pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+
     # Initialize the GPT-3 model
     model = GPT3Model(config)
 
-    # Initialize optimizer and trainer
-    trainer = Trainer(model, config, DataLoader([], batch_size=batch_size))  # Pass a placeholder DataLoader
+    # Resize model embeddings after adding special tokens
+    model.resize_token_embeddings(len(tokenizer))
 
-    # Train over shards (if needed, we can split the tokenized dataset into shards, but here we'll just use the tokenized dataset)
-    for tokenized_shard in dataset["train"]:  # Assuming the whole dataset is tokenized and loaded
-        # Create data loader for each shard, using the custom collate_fn to pad sequences
-        data_loader = DataLoader(tokenized_shard, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    # Check if the tokenized dataset exists; if not, shards will be created.
+    load_wikitext103_dataset(tokenizer, shard_size_gb=shard_size_gb, tokenized_dataset_path=tokenized_dataset_path)
 
-        # Train on each shard by updating the trainer's data loader
-        trainer.data_loader = data_loader
+    # Train the model on each saved shard sequentially
+    print(f"Training model on dataset with {shard_size_gb} GB shards")
+    for i in range(epochs):
+        # Load each shard for each epoch
+        shard_path = f"{tokenized_dataset_path}_shard_{i}"
+        if not os.path.exists(shard_path):
+            print(f"Shard {i} does not exist, skipping.")
+            continue
+        # Load the dataset shard
+        dataset = load_from_disk(shard_path)
+
+        # Create a DataLoader directly from the dataset (no 'train' split)
+        data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+
+        # Initialize optimizer and trainer
+        trainer = Trainer(model, config, data_loader, tokenizer, pad_token_id)
+
+        # Train on the current shard
         trainer.train()
 
     # Save the final model checkpoint

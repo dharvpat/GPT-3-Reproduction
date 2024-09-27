@@ -12,3 +12,4 @@ warmup_steps: 1000
 scheduler: "linear"
 optimizer: "adamw"
 epochs: 5
+embedding_dim: 768
