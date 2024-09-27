@@ -70,7 +70,7 @@ def load_wikitext103_dataset(tokenizer, split="train", shard_size_gb=1.0, tokeni
         # Tokenize and save the dataset shard-by-shard to reduce memory consumption
         print(f"Saving tokenized dataset to {tokenized_dataset_path} in shards of {shard_size_gb} GB...")
         for i, tokenized_shard in enumerate(shard_dataset(dataset)):
-            shard_save_path = f"{tokenized_dataset_path}_shard_{i}"
+            shard_save_path = f"{tokenized_dataset_path}"
             tokenized_shard.save_to_disk(shard_save_path)
             print(f"Saved shard {i} to {shard_save_path}")
 
